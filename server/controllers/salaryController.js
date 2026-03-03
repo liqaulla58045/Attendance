@@ -35,14 +35,9 @@ async function buildReportData(month, year) {
         });
 
         const payableRecords = records.filter(record => !isHolidayDate(record.date));
-        const baseSummary = calculateAttendanceSummary(payableRecords);
-        const markedDays = baseSummary.present + baseSummary.halfDay + baseSummary.leave + baseSummary.absent;
-        const inferredAbsent = Math.max(0, totalWorkingDays - markedDays);
-        const summary = {
-            ...baseSummary,
-            absent: baseSummary.absent + inferredAbsent,
-            unmarked: inferredAbsent,
-        };
+        const summary = calculateAttendanceSummary(payableRecords);
+        const markedDays = summary.present + summary.halfDay + summary.leave + summary.absent;
+        const unmarkedDays = Math.max(0, totalWorkingDays - markedDays);
 
         const attendancePercentage =
             totalWorkingDays > 0
@@ -65,7 +60,8 @@ async function buildReportData(month, year) {
             halfDay: summary.halfDay,
             leave: summary.leave,
             absent: summary.absent,
-            unmarked: summary.unmarked,
+            markedDays,
+            unmarkedDays,
             effectiveDays: summary.effectiveDays,
             attendancePercentage,
             dailyRate: salary.dailyRate,

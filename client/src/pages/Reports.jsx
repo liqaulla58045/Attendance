@@ -177,6 +177,8 @@ export default function Reports() {
                                             <th>Dept</th>
                                             <th>Stipend</th>
                                             <th>Working Days</th>
+                                            <th>Marked</th>
+                                            <th>Unmarked</th>
                                             <th>Present</th>
                                             <th>Half Day</th>
                                             <th>Leave</th>
@@ -197,6 +199,8 @@ export default function Reports() {
                                                 <td>{intern.department}</td>
                                                 <td>₹{intern.monthlyStipend?.toLocaleString()}</td>
                                                 <td style={{ textAlign: 'center' }}>{intern.totalWorkingDays}</td>
+                                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{intern.markedDays ?? (intern.present + intern.halfDay + intern.leave + intern.absent)}</td>
+                                                <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{intern.unmarkedDays ?? 0}</td>
                                                 <td style={{ textAlign: 'center', color: 'var(--success-light)', fontWeight: 600 }}>{intern.present}</td>
                                                 <td style={{ textAlign: 'center', color: 'var(--accent-light)' }}>{intern.halfDay}</td>
                                                 <td style={{ textAlign: 'center', color: 'var(--warning-light)' }}>{intern.leave}</td>
@@ -218,7 +222,7 @@ export default function Reports() {
                                         <tr style={{ background: 'var(--bg-table-header)', fontWeight: 700 }}>
                                             <td colSpan="3">TOTAL</td>
                                             <td>₹{totalStipend.toLocaleString()}</td>
-                                            <td colSpan="7"></td>
+                                            <td colSpan="9"></td>
                                             <td style={{ color: 'var(--primary-light)' }}>₹{totalPayable.toLocaleString()}</td>
                                         </tr>
                                     </tfoot>

@@ -149,7 +149,7 @@ function getDailyRate(monthlyStipend, cycleDays) {
 
 /**
  * Calculate final payable salary where holidays are paid.
- * Deduction only applies for Absent, Leave and HalfDay.
+ * Deduction applies only for explicitly marked Absent.
  * @param {{ absent:number, leave:number, halfDay:number }} attendanceSummary
  * @param {number} monthlyStipend
  * @param {number} cycleDays
@@ -157,7 +157,7 @@ function getDailyRate(monthlyStipend, cycleDays) {
  */
 function calculateSalary(attendanceSummary, monthlyStipend, cycleDays) {
     const dailyRate = getDailyRate(monthlyStipend, cycleDays);
-    const deductionUnits = (attendanceSummary.absent || 0) + (attendanceSummary.leave || 0) + ((attendanceSummary.halfDay || 0) * 0.5);
+    const deductionUnits = attendanceSummary.absent || 0;
     const deductionAmount = Math.round(deductionUnits * dailyRate * 100) / 100;
     const payableAmount = Math.max(0, Math.round((monthlyStipend - deductionAmount) * 100) / 100);
     return { dailyRate, deductionUnits, deductionAmount, payableAmount };
