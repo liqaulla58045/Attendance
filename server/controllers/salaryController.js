@@ -17,7 +17,7 @@ const PDFDocument = require('pdfkit');
  */
 async function buildReportData(month, year) {
     const { startDate, endDate } = getSalaryCycleDates(month, year);
-    const totalWorkingDays = getWorkingDays(startDate, endDate);
+    const cycleWorkingDays = getWorkingDays(startDate, endDate);
     const cycleDays = getCycleDays(startDate, endDate);
     const cycleLabel = getCycleLabel(startDate, endDate);
     const interns = await Intern.find().sort({ name: 1 });
@@ -25,13 +25,25 @@ async function buildReportData(month, year) {
     const report = [];
 
     for (const intern of interns) {
+        const joiningDate = new Date(intern.joiningDate);
+        const internStartDate = joiningDate > startDate ? joiningDate : startDate;
+        const totalWorkingDays = getWorkingDays(internStartDate, endDate);
+
         const records = await Attendance.find({
             internId: intern._id,
-            date: { $gte: startDate, $lte: endDate },
+            date: { $gte: internStartDate, $lte: endDate },
         });
 
         const payableRecords = records.filter(record => !isHolidayDate(record.date));
-        const summary = calculateAttendanceSummary(payableRecords);
+        const baseSummary = calculateAttendanceSummary(payableRecords);
+        const markedDays = baseSummary.present + baseSummary.halfDay + baseSummary.leave + baseSummary.absent;
+        const inferredAbsent = Math.max(0, totalWorkingDays - markedDays);
+        const summary = {
+            ...baseSummary,
+            absent: baseSummary.absent + inferredAbsent,
+            unmarked: inferredAbsent,
+        };
+
         const attendancePercentage =
             totalWorkingDays > 0
                 ? Math.round((summary.effectiveDays / totalWorkingDays) * 10000) / 100
@@ -53,6 +65,7 @@ async function buildReportData(month, year) {
             halfDay: summary.halfDay,
             leave: summary.leave,
             absent: summary.absent,
+            unmarked: summary.unmarked,
             effectiveDays: summary.effectiveDays,
             attendancePercentage,
             dailyRate: salary.dailyRate,
@@ -70,7 +83,7 @@ async function buildReportData(month, year) {
         cycleStart: startDate.toISOString().split('T')[0],
         cycleEnd: endDate.toISOString().split('T')[0],
         cycleDays,
-        totalWorkingDays,
+        totalWorkingDays: cycleWorkingDays,
         interns: report,
     };
 }

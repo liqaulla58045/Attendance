@@ -1,6 +1,6 @@
 const Intern = require('../models/Intern');
 const Attendance = require('../models/Attendance');
-const { getSalaryCycleDates, getWorkingDays, calculateAttendanceSummary } = require('../utils/salaryCalc');
+const { getSalaryCycleDates, getWorkingDays, calculateAttendanceSummary, isHolidayDate } = require('../utils/salaryCalc');
 
 // @desc    Get dashboard statistics
 // @route   GET /api/dashboard
@@ -44,15 +44,20 @@ const getDashboardStats = async (req, res) => {
         const lowAttendanceInterns = [];
 
         for (const intern of interns) {
+            const joiningDate = new Date(intern.joiningDate);
+            const internStartDate = joiningDate > startDate ? joiningDate : startDate;
+            const effectiveCycleEnd = todayDate > endDate ? endDate : todayDate;
+
             const records = await Attendance.find({
                 internId: intern._id,
-                date: { $gte: startDate, $lte: todayDate },
+                date: { $gte: internStartDate, $lte: effectiveCycleEnd },
             });
 
             if (records.length > 0) {
-                const summary = calculateAttendanceSummary(records);
+                const payableRecords = records.filter(record => !isHolidayDate(record.date));
+                const summary = calculateAttendanceSummary(payableRecords);
                 // Working days up to today within cycle
-                const workingDaysSoFar = getWorkingDays(startDate, todayDate > endDate ? endDate : todayDate);
+                const workingDaysSoFar = getWorkingDays(internStartDate, effectiveCycleEnd);
                 const percentage = workingDaysSoFar > 0
                     ? Math.round((summary.effectiveDays / workingDaysSoFar) * 10000) / 100
                     : 100;
