@@ -15,10 +15,25 @@ function isThirdSaturday(date) {
     return isSaturday && dayOfMonth >= 15 && dayOfMonth <= 21;
 }
 
+function getConfiguredHolidayStrings() {
+    const raw = process.env.NATIONAL_HOLIDAYS || '';
+    return raw
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
 function isHolidayDate(date, holidays = []) {
     const dateStr = date.toISOString().split('T')[0];
-    const holidayStrings = holidays.map(h => h.toISOString().split('T')[0]);
-    return isSunday(date) || isThirdSaturday(date) || holidayStrings.includes(dateStr);
+    const explicitHolidayStrings = holidays.map(h => h.toISOString().split('T')[0]);
+    const configuredHolidayStrings = getConfiguredHolidayStrings();
+
+    return (
+        isSunday(date)
+        || isThirdSaturday(date)
+        || explicitHolidayStrings.includes(dateStr)
+        || configuredHolidayStrings.includes(dateStr)
+    );
 }
 
 /**
@@ -113,6 +128,13 @@ function getCycleDays(startDate, endDate) {
     return Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
 }
 
+function getCycleLabel(startDate, endDate) {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const startLabel = monthNames[startDate.getUTCMonth()];
+    const endLabel = monthNames[endDate.getUTCMonth()];
+    return `${startLabel}-${endLabel}`;
+}
+
 /**
  * Calculate per-day rate from monthly stipend and cycle days.
  * Ex: 10000/30 => 333, 10000/31 => 323, 15000/31 => 484
@@ -126,16 +148,19 @@ function getDailyRate(monthlyStipend, cycleDays) {
 }
 
 /**
- * Calculate final payable salary with dynamic daily rate.
- * @param {number} effectiveDays
+ * Calculate final payable salary where holidays are paid.
+ * Deduction only applies for Absent, Leave and HalfDay.
+ * @param {{ absent:number, leave:number, halfDay:number }} attendanceSummary
  * @param {number} monthlyStipend
  * @param {number} cycleDays
- * @returns {{ dailyRate: number, payableAmount: number }}
+ * @returns {{ dailyRate: number, deductionUnits: number, deductionAmount: number, payableAmount: number }}
  */
-function calculateSalary(effectiveDays, monthlyStipend, cycleDays) {
+function calculateSalary(attendanceSummary, monthlyStipend, cycleDays) {
     const dailyRate = getDailyRate(monthlyStipend, cycleDays);
-    const payableAmount = Math.round(effectiveDays * dailyRate * 100) / 100;
-    return { dailyRate, payableAmount };
+    const deductionUnits = (attendanceSummary.absent || 0) + (attendanceSummary.leave || 0) + ((attendanceSummary.halfDay || 0) * 0.5);
+    const deductionAmount = Math.round(deductionUnits * dailyRate * 100) / 100;
+    const payableAmount = Math.max(0, Math.round((monthlyStipend - deductionAmount) * 100) / 100);
+    return { dailyRate, deductionUnits, deductionAmount, payableAmount };
 }
 
 module.exports = {
@@ -143,6 +168,7 @@ module.exports = {
     isThirdSaturday,
     isHolidayDate,
     getCycleDays,
+    getCycleLabel,
     getDailyRate,
     getSalaryCycleDates,
     getWorkingDays,

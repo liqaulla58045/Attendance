@@ -2,8 +2,10 @@ const Intern = require('../models/Intern');
 const Attendance = require('../models/Attendance');
 const {
     getCycleDays,
+    getCycleLabel,
     getSalaryCycleDates,
     getWorkingDays,
+    isHolidayDate,
     calculateAttendanceSummary,
     calculateSalary,
 } = require('../utils/salaryCalc');
@@ -17,6 +19,7 @@ async function buildReportData(month, year) {
     const { startDate, endDate } = getSalaryCycleDates(month, year);
     const totalWorkingDays = getWorkingDays(startDate, endDate);
     const cycleDays = getCycleDays(startDate, endDate);
+    const cycleLabel = getCycleLabel(startDate, endDate);
     const interns = await Intern.find().sort({ name: 1 });
 
     const report = [];
@@ -27,13 +30,14 @@ async function buildReportData(month, year) {
             date: { $gte: startDate, $lte: endDate },
         });
 
-        const summary = calculateAttendanceSummary(records);
+        const payableRecords = records.filter(record => !isHolidayDate(record.date));
+        const summary = calculateAttendanceSummary(payableRecords);
         const attendancePercentage =
             totalWorkingDays > 0
                 ? Math.round((summary.effectiveDays / totalWorkingDays) * 10000) / 100
                 : 0;
         const salary = calculateSalary(
-            summary.effectiveDays,
+            summary,
             intern.monthlyStipend,
             cycleDays
         );
@@ -52,6 +56,8 @@ async function buildReportData(month, year) {
             effectiveDays: summary.effectiveDays,
             attendancePercentage,
             dailyRate: salary.dailyRate,
+            deductionUnits: salary.deductionUnits,
+            deductionAmount: salary.deductionAmount,
             payableAmount: salary.payableAmount,
             lowAttendance: attendancePercentage < 75,
         });
@@ -60,6 +66,7 @@ async function buildReportData(month, year) {
     return {
         month,
         year,
+        cycleLabel,
         cycleStart: startDate.toISOString().split('T')[0],
         cycleEnd: endDate.toISOString().split('T')[0],
         cycleDays,
