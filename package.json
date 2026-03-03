@@ -1,0 +1,14 @@
+{
+    "name": "attendpro",
+    "version": "1.0.0",
+    "description": "Intern Attendance & Salary Management System",
+    "scripts": {
+        "install-all": "cd server && npm install && cd ../client && npm install",
+        "seed": "cd server && node seed.js",
+        "dev:server": "cd server && npm run dev",
+        "dev:client": "cd client && npm run dev",
+        "build": "cd client && npm run build",
+        "start": "cd server && node server.js",
+        "deploy": "npm run build && npm start"
+    }
+}
