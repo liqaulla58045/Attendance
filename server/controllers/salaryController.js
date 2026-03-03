@@ -1,6 +1,7 @@
 const Intern = require('../models/Intern');
 const Attendance = require('../models/Attendance');
 const {
+    getCycleDays,
     getSalaryCycleDates,
     getWorkingDays,
     calculateAttendanceSummary,
@@ -15,6 +16,7 @@ const PDFDocument = require('pdfkit');
 async function buildReportData(month, year) {
     const { startDate, endDate } = getSalaryCycleDates(month, year);
     const totalWorkingDays = getWorkingDays(startDate, endDate);
+    const cycleDays = getCycleDays(startDate, endDate);
     const interns = await Intern.find().sort({ name: 1 });
 
     const report = [];
@@ -30,10 +32,10 @@ async function buildReportData(month, year) {
             totalWorkingDays > 0
                 ? Math.round((summary.effectiveDays / totalWorkingDays) * 10000) / 100
                 : 0;
-        const payableAmount = calculateSalary(
+        const salary = calculateSalary(
             summary.effectiveDays,
-            totalWorkingDays,
-            intern.monthlyStipend
+            intern.monthlyStipend,
+            cycleDays
         );
 
         report.push({
@@ -49,7 +51,8 @@ async function buildReportData(month, year) {
             absent: summary.absent,
             effectiveDays: summary.effectiveDays,
             attendancePercentage,
-            payableAmount,
+            dailyRate: salary.dailyRate,
+            payableAmount: salary.payableAmount,
             lowAttendance: attendancePercentage < 75,
         });
     }
@@ -59,6 +62,7 @@ async function buildReportData(month, year) {
         year,
         cycleStart: startDate.toISOString().split('T')[0],
         cycleEnd: endDate.toISOString().split('T')[0],
+        cycleDays,
         totalWorkingDays,
         interns: report,
     };

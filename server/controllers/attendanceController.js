@@ -1,6 +1,7 @@
 const Attendance = require('../models/Attendance');
 const Intern = require('../models/Intern');
 const { emitDataRefresh } = require('../utils/realtime');
+const { isHolidayDate, isThirdSaturday } = require('../utils/salaryCalc');
 
 // @desc    Mark attendance (bulk for a date)
 // @route   POST /api/attendance
@@ -15,9 +16,11 @@ const markAttendance = async (req, res) => {
 
         const attendanceDate = new Date(date + 'T00:00:00.000Z');
 
-        // Check if it's a Sunday
-        if (attendanceDate.getUTCDay() === 0) {
-            return res.status(400).json({ message: 'Cannot mark attendance on Sundays' });
+        if (isHolidayDate(attendanceDate)) {
+            const message = isThirdSaturday(attendanceDate)
+                ? 'Cannot mark attendance on 3rd Saturdays'
+                : 'Cannot mark attendance on Sundays';
+            return res.status(400).json({ message });
         }
 
         const results = [];

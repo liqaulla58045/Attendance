@@ -5,6 +5,22 @@
  * Example: March salary = Feb 21 → Mar 20
  */
 
+function isSunday(date) {
+    return date.getUTCDay() === 0;
+}
+
+function isThirdSaturday(date) {
+    const isSaturday = date.getUTCDay() === 6;
+    const dayOfMonth = date.getUTCDate();
+    return isSaturday && dayOfMonth >= 15 && dayOfMonth <= 21;
+}
+
+function isHolidayDate(date, holidays = []) {
+    const dateStr = date.toISOString().split('T')[0];
+    const holidayStrings = holidays.map(h => h.toISOString().split('T')[0]);
+    return isSunday(date) || isThirdSaturday(date) || holidayStrings.includes(dateStr);
+}
+
 /**
  * Get salary cycle start and end dates for a given month/year.
  * @param {number} month - 1-12 (Jan=1, Dec=12)
@@ -29,7 +45,7 @@ function getSalaryCycleDates(month, year) {
 }
 
 /**
- * Count working days between two dates (excluding Sundays).
+ * Count working days between two dates (excluding Sundays and 3rd Saturdays).
  * Future-ready: accepts optional holidays array.
  * @param {Date} startDate
  * @param {Date} endDate
@@ -39,13 +55,9 @@ function getSalaryCycleDates(month, year) {
 function getWorkingDays(startDate, endDate, holidays = []) {
     let count = 0;
     const current = new Date(startDate);
-    const holidayStrings = holidays.map(h => h.toISOString().split('T')[0]);
 
     while (current <= endDate) {
-        const dayOfWeek = current.getUTCDay(); // 0=Sunday, use UTC
-        const dateStr = current.toISOString().split('T')[0];
-
-        if (dayOfWeek !== 0 && !holidayStrings.includes(dateStr)) {
+        if (!isHolidayDate(current, holidays)) {
             count++;
         }
         current.setUTCDate(current.getUTCDate() + 1);
@@ -89,18 +101,49 @@ function calculateAttendanceSummary(records) {
 }
 
 /**
- * Calculate final payable salary.
- * @param {number} effectiveDays
- * @param {number} totalWorkingDays
- * @param {number} monthlyStipend
+ * Count total cycle days (inclusive start and end date).
+ * @param {Date} startDate
+ * @param {Date} endDate
  * @returns {number}
  */
-function calculateSalary(effectiveDays, totalWorkingDays, monthlyStipend) {
-    if (totalWorkingDays === 0) return 0;
-    return Math.round((effectiveDays / totalWorkingDays) * monthlyStipend * 100) / 100;
+function getCycleDays(startDate, endDate) {
+    const startUtc = Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate());
+    const endUtc = Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate());
+    const diffMs = endUtc - startUtc;
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+}
+
+/**
+ * Calculate per-day rate from monthly stipend and cycle days.
+ * Ex: 10000/30 => 333, 10000/31 => 323, 15000/31 => 484
+ * @param {number} monthlyStipend
+ * @param {number} cycleDays
+ * @returns {number}
+ */
+function getDailyRate(monthlyStipend, cycleDays) {
+    if (!cycleDays || cycleDays <= 0) return 0;
+    return Math.round(monthlyStipend / cycleDays);
+}
+
+/**
+ * Calculate final payable salary with dynamic daily rate.
+ * @param {number} effectiveDays
+ * @param {number} monthlyStipend
+ * @param {number} cycleDays
+ * @returns {{ dailyRate: number, payableAmount: number }}
+ */
+function calculateSalary(effectiveDays, monthlyStipend, cycleDays) {
+    const dailyRate = getDailyRate(monthlyStipend, cycleDays);
+    const payableAmount = Math.round(effectiveDays * dailyRate * 100) / 100;
+    return { dailyRate, payableAmount };
 }
 
 module.exports = {
+    isSunday,
+    isThirdSaturday,
+    isHolidayDate,
+    getCycleDays,
+    getDailyRate,
     getSalaryCycleDates,
     getWorkingDays,
     calculateAttendanceSummary,
