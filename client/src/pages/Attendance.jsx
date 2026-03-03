@@ -78,9 +78,12 @@ export default function Attendance() {
         setAttendance(prev => prev.map(a => ({ ...a, status })));
     };
 
-    const isSunday = () => {
-        const day = new Date(selectedDate + 'T00:00:00').getDay();
-        return day === 0;
+    const isHoliday = () => {
+        const selected = new Date(selectedDate + 'T00:00:00');
+        const day = selected.getDay();
+        const dateOfMonth = selected.getDate();
+        const isThirdSaturday = day === 6 && dateOfMonth >= 15 && dateOfMonth <= 21;
+        return day === 0 || isThirdSaturday;
     };
 
     const statuses = ['Present', 'Absent', 'Leave', 'HalfDay'];
@@ -108,7 +111,7 @@ export default function Attendance() {
                         value={selectedDate}
                         onChange={(e) => setSelectedDate(e.target.value)}
                     />
-                    <button className="btn btn-success" onClick={handleSave} disabled={saving || isSunday()}>
+                    <button className="btn btn-success" onClick={handleSave} disabled={saving || isHoliday()}>
                         <Save size={16} /> {saving ? 'Saving...' : 'Save Attendance'}
                     </button>
                 </div>
@@ -138,9 +141,9 @@ export default function Attendance() {
                 </div>
             </div>
 
-            {isSunday() && (
+            {isHoliday() && (
                 <div className="notice notice-warning">
-                    <TriangleAlert size={18} /> Selected date is a <strong>Sunday</strong>. Attendance cannot be marked on Sundays.
+                    <TriangleAlert size={18} /> Selected date is a holiday (<strong>Sunday</strong> or <strong>3rd Saturday</strong>). Attendance cannot be marked.
                 </div>
             )}
 
@@ -150,7 +153,7 @@ export default function Attendance() {
                     <div className="table-actions">
                         <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginRight: '8px' }}>Quick:</span>
                         {statuses.map(s => (
-                            <button key={s} className={`btn btn-sm btn-outline`} onClick={() => markAllAs(s)} disabled={isSunday()}>
+                            <button key={s} className={`btn btn-sm btn-outline`} onClick={() => markAllAs(s)} disabled={isHoliday()}>
                                 All {s}
                             </button>
                         ))}
@@ -188,7 +191,7 @@ export default function Attendance() {
                                                     key={s}
                                                     className={`attendance-status-btn ${statusClasses[s]} ${record.status === s ? 'selected' : ''}`}
                                                     onClick={() => updateStatus(record.internId, s)}
-                                                    disabled={isSunday()}
+                                                    disabled={isHoliday()}
                                                     title={s}
                                                 >
                                                     {statusLabels[s]}

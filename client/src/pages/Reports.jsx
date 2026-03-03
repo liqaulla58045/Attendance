@@ -13,6 +13,13 @@ export default function Reports() {
 
     const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December'];
+    const shortMonthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    const getCycleLabel = (selectedMonth) => {
+        const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
+        return `${shortMonthNames[prevMonth]}-${shortMonthNames[selectedMonth]}`;
+    };
 
     const showToast = (message, type = 'success') => {
         setToast({ message, type });
@@ -104,7 +111,7 @@ export default function Reports() {
                         <label>Salary Month</label>
                         <select className="form-control" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
                             {monthNames.slice(1).map((name, i) => (
-                                <option key={i + 1} value={i + 1}>{name}</option>
+                                <option key={i + 1} value={i + 1}>{getCycleLabel(i + 1)}</option>
                             ))}
                         </select>
                     </div>
@@ -134,7 +141,7 @@ export default function Reports() {
                     {/* Summary Cards */}
                     <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
                         <div className="stat-card blue">
-                            <div className="stat-value" style={{ fontSize: '1.3rem' }}>{monthNames[report.month]} {report.year}</div>
+                            <div className="stat-value" style={{ fontSize: '1.3rem' }}>{report.cycleLabel} {report.year}</div>
                             <div className="stat-label">Report Period</div>
                         </div>
                         <div className="stat-card cyan">
