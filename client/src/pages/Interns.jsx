@@ -89,6 +89,31 @@ export default function Interns() {
         }
     };
 
+    const handleDiscontinue = async (intern) => {
+        const defaultDate = new Date().toISOString().split('T')[0];
+        const dateInput = window.prompt(`Discontinue ${intern.name} from date (YYYY-MM-DD):`, defaultDate);
+        if (!dateInput) return;
+
+        try {
+            await API.patch(`/interns/${intern._id}/discontinue`, { discontinuedFrom: dateInput });
+            showToast(`${intern.name} discontinued from ${dateInput}`);
+            fetchInterns();
+        } catch (err) {
+            showToast(err.response?.data?.message || 'Failed to discontinue intern', 'error');
+        }
+    };
+
+    const handleReactivate = async (intern) => {
+        if (!window.confirm(`Reactivate intern "${intern.name}"?`)) return;
+        try {
+            await API.patch(`/interns/${intern._id}/reactivate`);
+            showToast(`${intern.name} reactivated`);
+            fetchInterns();
+        } catch (err) {
+            showToast(err.response?.data?.message || 'Failed to reactivate intern', 'error');
+        }
+    };
+
     if (loading) {
         return <div className="page-container"><div className="loading"><div className="spinner"></div> Loading interns...</div></div>;
     }
@@ -122,6 +147,7 @@ export default function Interns() {
                                 <th>Email</th>
                                 <th>Department</th>
                                 <th>Joining Date</th>
+                                <th>Status</th>
                                 <th>Stipend (₹)</th>
                                 <th>Actions</th>
                             </tr>
@@ -134,10 +160,24 @@ export default function Interns() {
                                     <td style={{ color: 'var(--text-secondary)' }}>{intern.email}</td>
                                     <td><span className="badge badge-present">{intern.department}</span></td>
                                     <td>{new Date(intern.joiningDate).toLocaleDateString('en-IN')}</td>
+                                    <td>
+                                        {intern.isDiscontinued ? (
+                                            <span className="badge badge-warning">
+                                                Discontinued from {intern.discontinuedFrom ? new Date(intern.discontinuedFrom).toLocaleDateString('en-IN') : '-'}
+                                            </span>
+                                        ) : (
+                                            <span className="badge badge-present">Active</span>
+                                        )}
+                                    </td>
                                     <td style={{ fontWeight: 600 }}>₹{intern.monthlyStipend?.toLocaleString()}</td>
                                     <td>
                                         <div className="action-group">
                                             <button className="btn btn-outline btn-sm" onClick={() => openEditModal(intern)}><PencilLine size={14} /> Edit</button>
+                                            {intern.isDiscontinued ? (
+                                                <button className="btn btn-outline btn-sm" onClick={() => handleReactivate(intern)}>Reactivate</button>
+                                            ) : (
+                                                <button className="btn btn-warning btn-sm" onClick={() => handleDiscontinue(intern)}>Discontinue</button>
+                                            )}
                                             <button className="btn btn-danger btn-sm" onClick={() => handleDelete(intern._id, intern.name)}><Trash2 size={14} /></button>
                                         </div>
                                     </td>

@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Interns from './pages/Interns';
 import Attendance from './pages/Attendance';
 import Reports from './pages/Reports';
+import AttendanceHistory from './pages/AttendanceHistory';
 
 function AppLayout({ children }) {
   return (
@@ -56,6 +57,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <AppLayout><Reports /></AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/attendance-history"
+        element={
+          <ProtectedRoute>
+            <AppLayout><AttendanceHistory /></AppLayout>
           </ProtectedRoute>
         }
       />

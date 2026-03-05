@@ -27,6 +27,14 @@ const internSchema = new mongoose.Schema({
         required: [true, 'Monthly stipend is required'],
         min: 0,
     },
+    isDiscontinued: {
+        type: Boolean,
+        default: false,
+    },
+    discontinuedFrom: {
+        type: Date,
+        default: null,
+    },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Intern', internSchema);

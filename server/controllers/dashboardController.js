@@ -2,17 +2,36 @@ const Intern = require('../models/Intern');
 const Attendance = require('../models/Attendance');
 const { getSalaryCycleDates, getWorkingDays, calculateAttendanceSummary, isHolidayDate } = require('../utils/salaryCalc');
 
+function isInternActiveOnDate(intern, targetDate) {
+    const dateOnly = new Date(Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate()));
+    const joiningDate = new Date(intern.joiningDate);
+    const joiningDateOnly = new Date(Date.UTC(joiningDate.getUTCFullYear(), joiningDate.getUTCMonth(), joiningDate.getUTCDate()));
+
+    if (dateOnly < joiningDateOnly) return false;
+
+    if (intern.isDiscontinued && intern.discontinuedFrom) {
+        const discontinued = new Date(intern.discontinuedFrom);
+        const discontinuedFromOnly = new Date(Date.UTC(discontinued.getUTCFullYear(), discontinued.getUTCMonth(), discontinued.getUTCDate()));
+        if (dateOnly >= discontinuedFromOnly) return false;
+    }
+
+    return true;
+}
+
 // @desc    Get dashboard statistics
 // @route   GET /api/dashboard
 const getDashboardStats = async (req, res) => {
     try {
         // Total interns
         const totalInterns = await Intern.countDocuments();
+        const allInterns = await Intern.find();
 
         // Today's date (UTC midnight)
         const today = new Date();
         const todayStr = today.toISOString().split('T')[0];
         const todayDate = new Date(todayStr + 'T00:00:00.000Z');
+
+        const activeInternsToday = allInterns.filter(intern => isInternActiveOnDate(intern, todayDate));
 
         // Today's attendance
         let todayPresent = 0;
@@ -22,10 +41,14 @@ const getDashboardStats = async (req, res) => {
         let todayMarked = 0;
 
         if (isHolidayDate(todayDate)) {
-            todayPresent = totalInterns;
-            todayMarked = totalInterns;
+            todayPresent = activeInternsToday.length;
+            todayMarked = activeInternsToday.length;
         } else {
-            const todayAttendance = await Attendance.find({ date: todayDate });
+            const activeInternIdsToday = activeInternsToday.map(intern => intern._id);
+            const todayAttendance = await Attendance.find({
+                date: todayDate,
+                internId: { $in: activeInternIdsToday },
+            });
             todayPresent = todayAttendance.filter(a => a.status === 'Present').length;
             todayHalfDay = todayAttendance.filter(a => a.status === 'HalfDay').length;
             todayAbsent = todayAttendance.filter(a => a.status === 'Absent').length;
@@ -51,13 +74,29 @@ const getDashboardStats = async (req, res) => {
         const totalWorkingDays = getWorkingDays(startDate, endDate);
 
         // Low attendance warnings — check current cycle
-        const interns = await Intern.find();
         const lowAttendanceInterns = [];
 
-        for (const intern of interns) {
+        for (const intern of allInterns) {
             const joiningDate = new Date(intern.joiningDate);
             const internStartDate = joiningDate > startDate ? joiningDate : startDate;
-            const effectiveCycleEnd = todayDate > endDate ? endDate : todayDate;
+            let effectiveCycleEnd = todayDate > endDate ? endDate : todayDate;
+
+            if (intern.isDiscontinued && intern.discontinuedFrom) {
+                const discontinuedFrom = new Date(intern.discontinuedFrom);
+                const cutoff = new Date(Date.UTC(
+                    discontinuedFrom.getUTCFullYear(),
+                    discontinuedFrom.getUTCMonth(),
+                    discontinuedFrom.getUTCDate()
+                ));
+                cutoff.setUTCDate(cutoff.getUTCDate() - 1);
+                if (cutoff < effectiveCycleEnd) {
+                    effectiveCycleEnd = cutoff;
+                }
+            }
+
+            if (internStartDate > effectiveCycleEnd) {
+                continue;
+            }
 
             const records = await Attendance.find({
                 internId: intern._id,
@@ -93,7 +132,7 @@ const getDashboardStats = async (req, res) => {
                 absent: todayAbsent,
                 leave: todayLeave,
                 marked: todayMarked,
-                unmarked: totalInterns - todayMarked,
+                unmarked: Math.max(0, activeInternsToday.length - todayMarked),
             },
             currentCycle: {
                 month: cycleMonth,

@@ -67,7 +67,7 @@ const updateIntern = async (req, res) => {
             return res.status(404).json({ message: 'Intern not found' });
         }
 
-        const { name, email, department, joiningDate, monthlyStipend } = req.body;
+        const { name, email, department, joiningDate, monthlyStipend, isDiscontinued, discontinuedFrom } = req.body;
 
         if (email && email.toLowerCase() !== intern.email) {
             const existing = await Intern.findOne({ email: email.toLowerCase() });
@@ -82,8 +82,68 @@ const updateIntern = async (req, res) => {
         intern.joiningDate = joiningDate || intern.joiningDate;
         intern.monthlyStipend = monthlyStipend !== undefined ? monthlyStipend : intern.monthlyStipend;
 
+        if (isDiscontinued !== undefined) {
+            const discontinueFlag = Boolean(isDiscontinued);
+            intern.isDiscontinued = discontinueFlag;
+
+            if (discontinueFlag) {
+                if (!discontinuedFrom) {
+                    return res.status(400).json({ message: 'Discontinued date is required when intern is discontinued' });
+                }
+                intern.discontinuedFrom = new Date(discontinuedFrom + 'T00:00:00.000Z');
+            } else {
+                intern.discontinuedFrom = null;
+            }
+        }
+
         const updated = await intern.save();
         emitDataRefresh({ source: 'intern', action: 'updated' });
+        res.json(updated);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// @desc    Discontinue intern from a specific date
+// @route   PATCH /api/interns/:id/discontinue
+const discontinueIntern = async (req, res) => {
+    try {
+        const { discontinuedFrom } = req.body;
+
+        if (!discontinuedFrom) {
+            return res.status(400).json({ message: 'Discontinued date is required' });
+        }
+
+        const intern = await Intern.findById(req.params.id);
+        if (!intern) {
+            return res.status(404).json({ message: 'Intern not found' });
+        }
+
+        intern.isDiscontinued = true;
+        intern.discontinuedFrom = new Date(discontinuedFrom + 'T00:00:00.000Z');
+
+        const updated = await intern.save();
+        emitDataRefresh({ source: 'intern', action: 'discontinued' });
+        res.json(updated);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// @desc    Reactivate intern
+// @route   PATCH /api/interns/:id/reactivate
+const reactivateIntern = async (req, res) => {
+    try {
+        const intern = await Intern.findById(req.params.id);
+        if (!intern) {
+            return res.status(404).json({ message: 'Intern not found' });
+        }
+
+        intern.isDiscontinued = false;
+        intern.discontinuedFrom = null;
+
+        const updated = await intern.save();
+        emitDataRefresh({ source: 'intern', action: 'reactivated' });
         res.json(updated);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
@@ -111,4 +171,12 @@ const deleteIntern = async (req, res) => {
     }
 };
 
-module.exports = { createIntern, getInterns, getInternById, updateIntern, deleteIntern };
+module.exports = {
+    createIntern,
+    getInterns,
+    getInternById,
+    updateIntern,
+    discontinueIntern,
+    reactivateIntern,
+    deleteIntern,
+};

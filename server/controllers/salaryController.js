@@ -25,13 +25,27 @@ async function buildReportData(month, year) {
     for (const intern of interns) {
         const joiningDate = new Date(intern.joiningDate);
         const internStartDate = joiningDate > startDate ? joiningDate : startDate;
-        const hasStarted = internStartDate <= endDate;
-        const totalDays = hasStarted ? getCycleDays(internStartDate, endDate) : 0;
+        const cycleEndForIntern = (() => {
+            if (intern.isDiscontinued && intern.discontinuedFrom) {
+                const discontinuedFrom = new Date(intern.discontinuedFrom);
+                const cutoff = new Date(Date.UTC(
+                    discontinuedFrom.getUTCFullYear(),
+                    discontinuedFrom.getUTCMonth(),
+                    discontinuedFrom.getUTCDate()
+                ));
+                cutoff.setUTCDate(cutoff.getUTCDate() - 1);
+                return cutoff < endDate ? cutoff : endDate;
+            }
+            return endDate;
+        })();
+
+        const hasStarted = internStartDate <= cycleEndForIntern;
+        const totalDays = hasStarted ? getCycleDays(internStartDate, cycleEndForIntern) : 0;
 
         const records = hasStarted
             ? await Attendance.find({
                 internId: intern._id,
-                date: { $gte: internStartDate, $lte: endDate },
+                date: { $gte: internStartDate, $lte: cycleEndForIntern },
             })
             : [];
 
@@ -49,7 +63,7 @@ async function buildReportData(month, year) {
 
         if (hasStarted) {
             const current = new Date(internStartDate);
-            while (current <= endDate) {
+            while (current <= cycleEndForIntern) {
                 const dateKey = current.toISOString().split('T')[0];
                 const recordedStatus = recordByDate.get(dateKey);
 
@@ -102,6 +116,8 @@ async function buildReportData(month, year) {
             email: intern.email,
             department: intern.department,
             monthlyStipend: intern.monthlyStipend,
+            isDiscontinued: !!intern.isDiscontinued,
+            discontinuedFrom: intern.discontinuedFrom || null,
             totalDays,
             totalWorkingDays: totalDays,
             present: summary.present,

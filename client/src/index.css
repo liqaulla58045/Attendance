@@ -828,6 +828,44 @@ select.form-control {
   gap: 6px;
 }
 
+/* === ATTENDANCE HISTORY === */
+.history-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.history-calendar-header {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 6px 8px;
+}
+
+.history-day-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 92px;
+}
+
+.history-day-date {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+}
+
+.history-day-name {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
 /* === LOGIN PAGE === */
 .login-page {
   min-height: 100vh;
