@@ -143,7 +143,7 @@ export default function Attendance() {
 
             {isHoliday() && (
                 <div className="notice notice-warning">
-                    <TriangleAlert size={18} /> Selected date is a holiday (<strong>Sunday</strong> or <strong>3rd Saturday</strong>). Attendance cannot be marked.
+                    <TriangleAlert size={18} /> Selected date is a holiday (<strong>Sunday</strong> or <strong>3rd Saturday</strong>). Attendance is auto-marked as <strong>Present</strong> for all interns.
                 </div>
             )}
 

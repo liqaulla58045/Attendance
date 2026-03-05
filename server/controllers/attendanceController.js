@@ -17,10 +17,33 @@ const markAttendance = async (req, res) => {
         const attendanceDate = new Date(date + 'T00:00:00.000Z');
 
         if (isHolidayDate(attendanceDate)) {
+            const allInterns = await Intern.find({}, '_id');
+            const results = [];
+
+            for (const intern of allInterns) {
+                const result = await Attendance.findOneAndUpdate(
+                    { internId: intern._id, date: attendanceDate },
+                    { internId: intern._id, date: attendanceDate, status: 'Present' },
+                    { upsert: true, new: true, runValidators: true }
+                );
+                results.push(result);
+            }
+
             const message = isThirdSaturday(attendanceDate)
-                ? 'Cannot mark attendance on 3rd Saturdays'
-                : 'Cannot mark attendance on Sundays';
-            return res.status(400).json({ message });
+                ? '3rd Saturday marked as Present for all interns'
+                : 'Sunday marked as Present for all interns';
+
+            res.json({
+                message,
+                saved: results.length,
+            });
+
+            emitDataRefresh({
+                source: 'attendance',
+                action: 'auto-saved',
+                date,
+            });
+            return;
         }
 
         const results = [];
@@ -61,6 +84,18 @@ const getAttendanceByDate = async (req, res) => {
     try {
         const dateStr = req.params.date;
         const targetDate = new Date(dateStr + 'T00:00:00.000Z');
+
+        if (isHolidayDate(targetDate)) {
+            const allInterns = await Intern.find().sort({ name: 1 });
+
+            for (const intern of allInterns) {
+                await Attendance.findOneAndUpdate(
+                    { internId: intern._id, date: targetDate },
+                    { internId: intern._id, date: targetDate, status: 'Present' },
+                    { upsert: true, new: true, runValidators: true }
+                );
+            }
+        }
 
         const attendance = await Attendance.find({ date: targetDate })
             .populate('internId', 'name email department')

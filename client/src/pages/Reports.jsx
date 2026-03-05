@@ -149,8 +149,8 @@ export default function Reports() {
                             <div className="stat-label">Salary Cycle</div>
                         </div>
                         <div className="stat-card green">
-                            <div className="stat-value">{report.totalWorkingDays}</div>
-                            <div className="stat-label">Working Days</div>
+                            <div className="stat-value">{report.totalDays ?? report.totalWorkingDays}</div>
+                            <div className="stat-label">Total Days</div>
                         </div>
                         <div className="stat-card amber">
                             <div className="stat-value">₹{totalPayable.toLocaleString()}</div>
@@ -176,7 +176,7 @@ export default function Reports() {
                                             <th>Name</th>
                                             <th>Dept</th>
                                             <th>Stipend</th>
-                                            <th>Working Days</th>
+                                            <th>Total Days</th>
                                             <th>Marked</th>
                                             <th>Unmarked</th>
                                             <th>Present</th>
@@ -198,7 +198,7 @@ export default function Reports() {
                                                 </td>
                                                 <td>{intern.department}</td>
                                                 <td>₹{intern.monthlyStipend?.toLocaleString()}</td>
-                                                <td style={{ textAlign: 'center' }}>{intern.totalWorkingDays}</td>
+                                                <td style={{ textAlign: 'center' }}>{intern.totalDays ?? intern.totalWorkingDays}</td>
                                                 <td style={{ textAlign: 'center', fontWeight: 600 }}>{intern.markedDays ?? (intern.present + intern.halfDay + intern.leave + intern.absent)}</td>
                                                 <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{intern.unmarkedDays ?? 0}</td>
                                                 <td style={{ textAlign: 'center', color: 'var(--success-light)', fontWeight: 600 }}>{intern.present}</td>

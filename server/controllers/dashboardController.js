@@ -15,12 +15,23 @@ const getDashboardStats = async (req, res) => {
         const todayDate = new Date(todayStr + 'T00:00:00.000Z');
 
         // Today's attendance
-        const todayAttendance = await Attendance.find({ date: todayDate });
-        const todayPresent = todayAttendance.filter(a => a.status === 'Present').length;
-        const todayHalfDay = todayAttendance.filter(a => a.status === 'HalfDay').length;
-        const todayAbsent = todayAttendance.filter(a => a.status === 'Absent').length;
-        const todayLeave = todayAttendance.filter(a => a.status === 'Leave').length;
-        const todayMarked = todayAttendance.length;
+        let todayPresent = 0;
+        let todayHalfDay = 0;
+        let todayAbsent = 0;
+        let todayLeave = 0;
+        let todayMarked = 0;
+
+        if (isHolidayDate(todayDate)) {
+            todayPresent = totalInterns;
+            todayMarked = totalInterns;
+        } else {
+            const todayAttendance = await Attendance.find({ date: todayDate });
+            todayPresent = todayAttendance.filter(a => a.status === 'Present').length;
+            todayHalfDay = todayAttendance.filter(a => a.status === 'HalfDay').length;
+            todayAbsent = todayAttendance.filter(a => a.status === 'Absent').length;
+            todayLeave = todayAttendance.filter(a => a.status === 'Leave').length;
+            todayMarked = todayAttendance.length;
+        }
 
         // Current salary cycle (determine current month cycle)
         const currentMonth = today.getMonth() + 1; // 1-12

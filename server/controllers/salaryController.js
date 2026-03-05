@@ -4,7 +4,6 @@ const {
     getCycleDays,
     getCycleLabel,
     getSalaryCycleDates,
-    getWorkingDays,
     isHolidayDate,
     calculateAttendanceSummary,
     calculateSalary,
@@ -17,7 +16,6 @@ const PDFDocument = require('pdfkit');
  */
 async function buildReportData(month, year) {
     const { startDate, endDate } = getSalaryCycleDates(month, year);
-    const cycleWorkingDays = getWorkingDays(startDate, endDate);
     const cycleDays = getCycleDays(startDate, endDate);
     const cycleLabel = getCycleLabel(startDate, endDate);
     const interns = await Intern.find().sort({ name: 1 });
@@ -27,26 +25,75 @@ async function buildReportData(month, year) {
     for (const intern of interns) {
         const joiningDate = new Date(intern.joiningDate);
         const internStartDate = joiningDate > startDate ? joiningDate : startDate;
-        const totalWorkingDays = getWorkingDays(internStartDate, endDate);
+        const hasStarted = internStartDate <= endDate;
+        const totalDays = hasStarted ? getCycleDays(internStartDate, endDate) : 0;
 
-        const records = await Attendance.find({
-            internId: intern._id,
-            date: { $gte: internStartDate, $lte: endDate },
+        const records = hasStarted
+            ? await Attendance.find({
+                internId: intern._id,
+                date: { $gte: internStartDate, $lte: endDate },
+            })
+            : [];
+
+        let present = 0;
+        let halfDay = 0;
+        let leave = 0;
+        let absent = 0;
+        let markedDays = 0;
+
+        const recordByDate = new Map();
+        records.forEach(record => {
+            const key = new Date(record.date).toISOString().split('T')[0];
+            recordByDate.set(key, record.status);
         });
 
-        const payableRecords = records.filter(record => !isHolidayDate(record.date));
-        const summary = calculateAttendanceSummary(payableRecords);
-        const markedDays = summary.present + summary.halfDay + summary.leave + summary.absent;
-        const unmarkedDays = Math.max(0, totalWorkingDays - markedDays);
+        if (hasStarted) {
+            const current = new Date(internStartDate);
+            while (current <= endDate) {
+                const dateKey = current.toISOString().split('T')[0];
+                const recordedStatus = recordByDate.get(dateKey);
+
+                if (isHolidayDate(current)) {
+                    present++;
+                    markedDays++;
+                } else if (recordedStatus) {
+                    switch (recordedStatus) {
+                        case 'Present':
+                            present++;
+                            break;
+                        case 'HalfDay':
+                            halfDay++;
+                            break;
+                        case 'Leave':
+                            leave++;
+                            break;
+                        case 'Absent':
+                            absent++;
+                            break;
+                    }
+                    markedDays++;
+                }
+
+                current.setUTCDate(current.getUTCDate() + 1);
+            }
+        }
+
+        const summary = calculateAttendanceSummary([
+            ...Array.from({ length: present }, () => ({ status: 'Present' })),
+            ...Array.from({ length: halfDay }, () => ({ status: 'HalfDay' })),
+            ...Array.from({ length: leave }, () => ({ status: 'Leave' })),
+            ...Array.from({ length: absent }, () => ({ status: 'Absent' })),
+        ]);
+        const unmarkedDays = Math.max(0, totalDays - markedDays);
 
         const attendancePercentage =
-            totalWorkingDays > 0
-                ? Math.round((summary.effectiveDays / totalWorkingDays) * 10000) / 100
+            totalDays > 0
+                ? Math.round((summary.effectiveDays / totalDays) * 10000) / 100
                 : 0;
         const salary = calculateSalary(
             summary,
             intern.monthlyStipend,
-            cycleDays
+            totalDays
         );
 
         report.push({
@@ -55,7 +102,8 @@ async function buildReportData(month, year) {
             email: intern.email,
             department: intern.department,
             monthlyStipend: intern.monthlyStipend,
-            totalWorkingDays,
+            totalDays,
+            totalWorkingDays: totalDays,
             present: summary.present,
             halfDay: summary.halfDay,
             leave: summary.leave,
@@ -79,7 +127,8 @@ async function buildReportData(month, year) {
         cycleStart: startDate.toISOString().split('T')[0],
         cycleEnd: endDate.toISOString().split('T')[0],
         cycleDays,
-        totalWorkingDays: cycleWorkingDays,
+        totalDays: cycleDays,
+        totalWorkingDays: cycleDays,
         interns: report,
     };
 }
@@ -130,7 +179,7 @@ const exportExcel = async (req, res) => {
         // Cycle info
         sheet.mergeCells('A2:L2');
         const cycleCell = sheet.getCell('A2');
-        cycleCell.value = `Cycle: ${data.cycleStart} to ${data.cycleEnd} | Working Days: ${data.totalWorkingDays}`;
+        cycleCell.value = `Cycle: ${data.cycleStart} to ${data.cycleEnd} | Total Days: ${data.totalDays}`;
         cycleCell.font = { size: 11, italic: true };
         cycleCell.alignment = { horizontal: 'center' };
 
@@ -223,7 +272,7 @@ const exportPDF = async (req, res) => {
             .text(`Salary Report — ${monthNames[month]} ${year}`, { align: 'center' });
         doc.moveDown(0.3);
         doc.fontSize(10).font('Helvetica')
-            .text(`Cycle: ${data.cycleStart} to ${data.cycleEnd} | Working Days: ${data.totalWorkingDays}`, { align: 'center' });
+            .text(`Cycle: ${data.cycleStart} to ${data.cycleEnd} | Total Days: ${data.totalDays}`, { align: 'center' });
         doc.moveDown(1);
 
         // Table
