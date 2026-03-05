@@ -24,30 +24,26 @@ async function buildReportData(month, year) {
 
     for (const intern of interns) {
         const joiningDate = new Date(intern.joiningDate);
-        const internStartDate = joiningDate > startDate ? joiningDate : startDate;
-        const cycleEndForIntern = (() => {
-            if (intern.isDiscontinued && intern.discontinuedFrom) {
-                const discontinuedFrom = new Date(intern.discontinuedFrom);
-                const cutoff = new Date(Date.UTC(
-                    discontinuedFrom.getUTCFullYear(),
-                    discontinuedFrom.getUTCMonth(),
-                    discontinuedFrom.getUTCDate()
-                ));
-                cutoff.setUTCDate(cutoff.getUTCDate() - 1);
-                return cutoff < endDate ? cutoff : endDate;
-            }
-            return endDate;
-        })();
+        const joiningDateOnly = new Date(Date.UTC(
+            joiningDate.getUTCFullYear(),
+            joiningDate.getUTCMonth(),
+            joiningDate.getUTCDate()
+        ));
 
-        const hasStarted = internStartDate <= cycleEndForIntern;
-        const totalDays = hasStarted ? getCycleDays(internStartDate, cycleEndForIntern) : 0;
+        const discontinuedFromOnly = intern.isDiscontinued && intern.discontinuedFrom
+            ? new Date(Date.UTC(
+                new Date(intern.discontinuedFrom).getUTCFullYear(),
+                new Date(intern.discontinuedFrom).getUTCMonth(),
+                new Date(intern.discontinuedFrom).getUTCDate()
+            ))
+            : null;
 
-        const records = hasStarted
-            ? await Attendance.find({
-                internId: intern._id,
-                date: { $gte: internStartDate, $lte: cycleEndForIntern },
-            })
-            : [];
+        const totalDays = cycleDays;
+
+        const records = await Attendance.find({
+            internId: intern._id,
+            date: { $gte: startDate, $lte: endDate },
+        });
 
         let present = 0;
         let halfDay = 0;
@@ -61,35 +57,43 @@ async function buildReportData(month, year) {
             recordByDate.set(key, record.status);
         });
 
-        if (hasStarted) {
-            const current = new Date(internStartDate);
-            while (current <= cycleEndForIntern) {
-                const dateKey = current.toISOString().split('T')[0];
-                const recordedStatus = recordByDate.get(dateKey);
+        const current = new Date(startDate);
+        while (current <= endDate) {
+            const dateOnly = new Date(Date.UTC(
+                current.getUTCFullYear(),
+                current.getUTCMonth(),
+                current.getUTCDate()
+            ));
 
-                if (isHolidayDate(current)) {
-                    present++;
-                    markedDays++;
-                } else if (recordedStatus) {
-                    switch (recordedStatus) {
-                        case 'Present':
-                            present++;
-                            break;
-                        case 'HalfDay':
-                            halfDay++;
-                            break;
-                        case 'Leave':
-                            leave++;
-                            break;
-                        case 'Absent':
-                            absent++;
-                            break;
-                    }
-                    markedDays++;
+            const isAfterJoin = dateOnly >= joiningDateOnly;
+            const isBeforeDiscontinue = !discontinuedFromOnly || dateOnly < discontinuedFromOnly;
+            const isActiveOnDate = isAfterJoin && isBeforeDiscontinue;
+
+            const dateKey = current.toISOString().split('T')[0];
+            const recordedStatus = recordByDate.get(dateKey);
+
+            if (isActiveOnDate && isHolidayDate(current)) {
+                present++;
+                markedDays++;
+            } else if (isActiveOnDate && recordedStatus) {
+                switch (recordedStatus) {
+                    case 'Present':
+                        present++;
+                        break;
+                    case 'HalfDay':
+                        halfDay++;
+                        break;
+                    case 'Leave':
+                        leave++;
+                        break;
+                    case 'Absent':
+                        absent++;
+                        break;
                 }
-
-                current.setUTCDate(current.getUTCDate() + 1);
+                markedDays++;
             }
+
+            current.setUTCDate(current.getUTCDate() + 1);
         }
 
         const summary = calculateAttendanceSummary([
