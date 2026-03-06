@@ -23,10 +23,15 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
         'http://127.0.0.1:5173',
     ];
 
+function isAllowedDevOrigin(origin) {
+    if (!origin) return true;
+    return /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+}
+
 // Middleware
 app.use(cors({
     origin: (origin, callback) => {
-        if (allowedOrigins === true || !origin || allowedOrigins.includes(origin)) {
+        if (allowedOrigins === true || !origin || allowedOrigins.includes(origin) || isAllowedDevOrigin(origin)) {
             return callback(null, true);
         }
         return callback(new Error('Not allowed by CORS'));

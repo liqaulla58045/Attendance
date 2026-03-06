@@ -9,6 +9,7 @@ import Interns from './pages/Interns';
 import Attendance from './pages/Attendance';
 import Reports from './pages/Reports';
 import AttendanceHistory from './pages/AttendanceHistory';
+import FaceAttendance from './pages/FaceAttendance';
 
 function AppLayout({ children }) {
   return (
@@ -65,6 +66,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <AppLayout><AttendanceHistory /></AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/face-attendance"
+        element={
+          <ProtectedRoute>
+            <AppLayout><FaceAttendance /></AppLayout>
           </ProtectedRoute>
         }
       />

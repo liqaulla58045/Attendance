@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LayoutDashboard, Users, ClipboardCheck, FileBarChart2, LogOut, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, Users, ClipboardCheck, FileBarChart2, LogOut, CalendarDays, ScanFace } from 'lucide-react';
 
 export default function Sidebar() {
     const { logout } = useAuth();
@@ -35,6 +35,10 @@ export default function Sidebar() {
                 <NavLink to="/attendance-history" className={({ isActive }) => isActive ? 'active' : ''}>
                     <CalendarDays className="nav-icon" size={18} />
                     Attendance History
+                </NavLink>
+                <NavLink to="/face-attendance" className={({ isActive }) => isActive ? 'active' : ''}>
+                    <ScanFace className="nav-icon" size={18} />
+                    Face Attendance
                 </NavLink>
             </nav>
 
