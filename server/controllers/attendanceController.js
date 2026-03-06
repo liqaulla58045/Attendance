@@ -10,6 +10,13 @@ const SHIFT_END_MINUTES = 18 * 60;
 const DAILY_REQUIRED_MINUTES = SHIFT_END_MINUTES - SHIFT_START_MINUTES;
 const DEFAULT_FACE_MATCH_THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD || 0.78);
 
+class BadRequestError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'BadRequestError';
+    }
+}
+
 function getISTShiftedDate(date = new Date()) {
     return new Date(date.getTime() + IST_OFFSET_MINUTES * 60 * 1000);
 }
@@ -29,20 +36,20 @@ function getISTMinutesOfDay(date = new Date()) {
 
 function normalizeEmbedding(input) {
     if (!Array.isArray(input) || input.length < 32) {
-        throw new Error('Face embedding must be a numeric array with at least 32 values');
+        throw new BadRequestError('Face embedding must be a numeric array with at least 32 values');
     }
 
     const vector = input.map((value) => {
         const numberValue = Number(value);
         if (!Number.isFinite(numberValue)) {
-            throw new Error('Face embedding contains invalid numeric values');
+            throw new BadRequestError('Face embedding contains invalid numeric values');
         }
         return numberValue;
     });
 
     const magnitude = Math.sqrt(vector.reduce((acc, value) => acc + (value * value), 0));
     if (!Number.isFinite(magnitude) || magnitude === 0) {
-        throw new Error('Face embedding magnitude must be greater than zero');
+        throw new BadRequestError('Face embedding magnitude must be greater than zero');
     }
 
     return vector.map((value) => value / magnitude);
@@ -164,6 +171,10 @@ const markAttendance = async (req, res) => {
             date,
         });
     } catch (error) {
+        if (error instanceof BadRequestError) {
+            return res.status(400).json({ message: error.message });
+        }
+        console.error('Face enrollment error:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
@@ -220,6 +231,10 @@ const enrollInternFace = async (req, res) => {
             faceEnrolledAt: intern.faceEnrolledAt,
         });
     } catch (error) {
+        if (error instanceof BadRequestError) {
+            return res.status(400).json({ message: error.message });
+        }
+        console.error('Face punch-in error:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };

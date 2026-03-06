@@ -183,6 +183,9 @@ export default function FaceAttendance() {
         try {
             const embedding = await captureEmbedding();
             setSamples((prev) => {
+                if (prev.length > 0 && prev[0].length !== embedding.length) {
+                    throw new Error('Captured sample dimension mismatch. Please clear and capture again');
+                }
                 const next = [...prev, embedding];
                 return next.slice(-MAX_ENROLL_SAMPLES);
             });
@@ -202,6 +205,12 @@ export default function FaceAttendance() {
 
         if (samples.length < MIN_ENROLL_SAMPLES) {
             showToast(`Capture at least ${MIN_ENROLL_SAMPLES} samples for enrollment`, 'error');
+            return;
+        }
+
+        const sampleDimension = samples[0]?.length || 0;
+        if (!sampleDimension || samples.some((sample) => sample.length !== sampleDimension)) {
+            showToast('Sample dimensions are inconsistent. Clear and recapture samples.', 'error');
             return;
         }
 
@@ -283,6 +292,10 @@ export default function FaceAttendance() {
 
                     <button className="btn btn-outline" onClick={handleCaptureSample} disabled={captureBusy || !modelReady || !cameraReady}>
                         <Camera size={16} /> {captureBusy ? 'Capturing...' : 'Capture Sample'}
+                    </button>
+
+                    <button className="btn btn-outline" onClick={() => setSamples([])} disabled={samples.length === 0 || enrollBusy || captureBusy}>
+                        Clear Samples
                     </button>
 
                     <button className="btn btn-primary" onClick={handleEnrollFace} disabled={enrollBusy || samples.length < MIN_ENROLL_SAMPLES}>
