@@ -70,6 +70,7 @@ export default function AttendanceHistory() {
 
     const statusClassMap = {
         Present: 'badge-present',
+        Late: 'badge-warning',
         Absent: 'badge-absent',
         Leave: 'badge-leave',
         HalfDay: 'badge-halfday',
@@ -130,7 +131,7 @@ export default function AttendanceHistory() {
 
             {history && (
                 <>
-                    <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                    <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
                         <div className="stat-card cyan">
                             <div className="stat-value" style={{ fontSize: '1.2rem' }}>{history.cycle.totalDays}</div>
                             <div className="stat-label">Cycle Total Days</div>
@@ -143,11 +144,15 @@ export default function AttendanceHistory() {
                             <div className="stat-value" style={{ fontSize: '1.2rem' }}>{history.summary.present}</div>
                             <div className="stat-label">Present Days</div>
                         </div>
+                        <div className="stat-card amber">
+                            <div className="stat-value" style={{ fontSize: '1.2rem' }}>{history.summary.late || 0}</div>
+                            <div className="stat-label">Late Days</div>
+                        </div>
                         <div className="stat-card red">
                             <div className="stat-value" style={{ fontSize: '1.2rem' }}>{history.summary.absent}</div>
                             <div className="stat-label">Absent Days</div>
                         </div>
-                        <div className="stat-card amber">
+                        <div className="stat-card blue">
                             <div className="stat-value" style={{ fontSize: '1.2rem' }}>{history.summary.unmarked}</div>
                             <div className="stat-label">Unmarked Days</div>
                         </div>
@@ -162,6 +167,7 @@ export default function AttendanceHistory() {
                         </div>
                         <div style={{ padding: '14px 0', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                             <span className="badge badge-present">Present</span>
+                            <span className="badge badge-warning">Late</span>
                             <span className="badge badge-absent">Absent</span>
                             <span className="badge badge-halfday">Half Day</span>
                             <span className="badge badge-leave">Leave</span>

@@ -35,6 +35,7 @@ const getDashboardStats = async (req, res) => {
 
         // Today's attendance
         let todayPresent = 0;
+        let todayLate = 0;
         let todayHalfDay = 0;
         let todayAbsent = 0;
         let todayLeave = 0;
@@ -50,6 +51,8 @@ const getDashboardStats = async (req, res) => {
                 internId: { $in: activeInternIdsToday },
             });
             todayPresent = todayAttendance.filter(a => a.status === 'Present').length;
+            todayLate = todayAttendance.filter(a => a.status === 'Late').length;
+            todayPresent += todayLate;
             todayHalfDay = todayAttendance.filter(a => a.status === 'HalfDay').length;
             todayAbsent = todayAttendance.filter(a => a.status === 'Absent').length;
             todayLeave = todayAttendance.filter(a => a.status === 'Leave').length;
@@ -128,6 +131,7 @@ const getDashboardStats = async (req, res) => {
             today: {
                 date: todayStr,
                 present: todayPresent,
+                late: todayLate,
                 halfDay: todayHalfDay,
                 absent: todayAbsent,
                 leave: todayLeave,

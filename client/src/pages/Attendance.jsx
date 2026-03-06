@@ -86,11 +86,12 @@ export default function Attendance() {
         return day === 0 || isThirdSaturday;
     };
 
-    const statuses = ['Present', 'Absent', 'Leave', 'HalfDay'];
-    const statusClasses = { Present: 'present', Absent: 'absent', Leave: 'leave', HalfDay: 'halfday' };
-    const statusLabels = { Present: 'P', Absent: 'A', Leave: 'L', HalfDay: '½' };
+    const statuses = ['Present', 'Late', 'Absent', 'Leave', 'HalfDay'];
+    const statusClasses = { Present: 'present', Late: 'warning', Absent: 'absent', Leave: 'leave', HalfDay: 'halfday' };
+    const statusLabels = { Present: 'P', Late: 'LT', Absent: 'A', Leave: 'L', HalfDay: '½' };
 
     const presentCount = attendance.filter(a => a.status === 'Present').length;
+    const lateCount = attendance.filter(a => a.status === 'Late').length;
     const absentCount = attendance.filter(a => a.status === 'Absent').length;
     const leaveCount = attendance.filter(a => a.status === 'Leave').length;
     const halfDayCount = attendance.filter(a => a.status === 'HalfDay').length;
@@ -118,10 +119,14 @@ export default function Attendance() {
             </div>
 
             {/* Quick Stats */}
-            <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+            <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
                 <div className="stat-card green">
                     <div className="stat-value" style={{ fontSize: '1.4rem' }}>{presentCount}</div>
                     <div className="stat-label">Present</div>
+                </div>
+                <div className="stat-card amber">
+                    <div className="stat-value" style={{ fontSize: '1.4rem' }}>{lateCount}</div>
+                    <div className="stat-label">Late</div>
                 </div>
                 <div className="stat-card red">
                     <div className="stat-value" style={{ fontSize: '1.4rem' }}>{absentCount}</div>

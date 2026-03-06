@@ -46,6 +46,7 @@ async function buildReportData(month, year) {
         });
 
         let present = 0;
+        let late = 0;
         let halfDay = 0;
         let leave = 0;
         let absent = 0;
@@ -80,6 +81,10 @@ async function buildReportData(month, year) {
                     case 'Present':
                         present++;
                         break;
+                    case 'Late':
+                        late++;
+                        present++;
+                        break;
                     case 'HalfDay':
                         halfDay++;
                         break;
@@ -98,6 +103,7 @@ async function buildReportData(month, year) {
 
         const summary = calculateAttendanceSummary([
             ...Array.from({ length: present }, () => ({ status: 'Present' })),
+            ...Array.from({ length: late }, () => ({ status: 'Late' })),
             ...Array.from({ length: halfDay }, () => ({ status: 'HalfDay' })),
             ...Array.from({ length: leave }, () => ({ status: 'Leave' })),
             ...Array.from({ length: absent }, () => ({ status: 'Absent' })),
@@ -125,6 +131,7 @@ async function buildReportData(month, year) {
             totalDays,
             totalWorkingDays: totalDays,
             present: summary.present,
+            late,
             halfDay: summary.halfDay,
             leave: summary.leave,
             absent: summary.absent,

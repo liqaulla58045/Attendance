@@ -35,6 +35,24 @@ const internSchema = new mongoose.Schema({
         type: Date,
         default: null,
     },
+    faceEmbeddings: {
+        type: [[Number]],
+        default: [],
+        select: false,
+    },
+    faceEmbeddingDimension: {
+        type: Number,
+        default: null,
+    },
+    faceModelVersion: {
+        type: String,
+        default: null,
+        trim: true,
+    },
+    faceEnrolledAt: {
+        type: Date,
+        default: null,
+    },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Intern', internSchema);

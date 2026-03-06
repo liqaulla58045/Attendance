@@ -3,6 +3,60 @@ const Intern = require('../models/Intern');
 const { emitDataRefresh } = require('../utils/realtime');
 const { isHolidayDate, isThirdSaturday, getSalaryCycleDates, getCycleDays } = require('../utils/salaryCalc');
 
+const IST_OFFSET_MINUTES = 330;
+const SHIFT_START_MINUTES = 10 * 60;
+const LATE_CUTOFF_MINUTES = 10 * 60 + 30;
+const SHIFT_END_MINUTES = 18 * 60;
+const DAILY_REQUIRED_MINUTES = SHIFT_END_MINUTES - SHIFT_START_MINUTES;
+const DEFAULT_FACE_MATCH_THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD || 0.78);
+
+function getISTShiftedDate(date = new Date()) {
+    return new Date(date.getTime() + IST_OFFSET_MINUTES * 60 * 1000);
+}
+
+function getISTDateKey(date = new Date()) {
+    const ist = getISTShiftedDate(date);
+    const year = ist.getUTCFullYear();
+    const month = String(ist.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(ist.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function getISTMinutesOfDay(date = new Date()) {
+    const ist = getISTShiftedDate(date);
+    return (ist.getUTCHours() * 60) + ist.getUTCMinutes();
+}
+
+function normalizeEmbedding(input) {
+    if (!Array.isArray(input) || input.length < 32) {
+        throw new Error('Face embedding must be a numeric array with at least 32 values');
+    }
+
+    const vector = input.map((value) => {
+        const numberValue = Number(value);
+        if (!Number.isFinite(numberValue)) {
+            throw new Error('Face embedding contains invalid numeric values');
+        }
+        return numberValue;
+    });
+
+    const magnitude = Math.sqrt(vector.reduce((acc, value) => acc + (value * value), 0));
+    if (!Number.isFinite(magnitude) || magnitude === 0) {
+        throw new Error('Face embedding magnitude must be greater than zero');
+    }
+
+    return vector.map((value) => value / magnitude);
+}
+
+function cosineSimilarity(vecA, vecB) {
+    if (!Array.isArray(vecA) || !Array.isArray(vecB) || vecA.length !== vecB.length) return -1;
+    let dot = 0;
+    for (let i = 0; i < vecA.length; i++) {
+        dot += vecA[i] * vecB[i];
+    }
+    return dot;
+}
+
 function isInternActiveOnDate(intern, targetDate) {
     const dateOnly = new Date(Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate()));
     const joiningDate = new Date(intern.joiningDate);
@@ -78,7 +132,18 @@ const markAttendance = async (req, res) => {
                 }
                 const result = await Attendance.findOneAndUpdate(
                     { internId: record.internId, date: attendanceDate },
-                    { internId: record.internId, date: attendanceDate, status: record.status },
+                    {
+                        internId: record.internId,
+                        date: attendanceDate,
+                        status: record.status,
+                        punchInAt: null,
+                        punctualityStatus: null,
+                        lateMinutes: 0,
+                        workedMinutes: 0,
+                        shortfallMinutes: 0,
+                        faceVerified: false,
+                        faceConfidence: null,
+                    },
                     { upsert: true, new: true, runValidators: true }
                 );
                 results.push(result);
@@ -97,6 +162,181 @@ const markAttendance = async (req, res) => {
             source: 'attendance',
             action: 'saved',
             date,
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// @desc    Enroll face embedding(s) for an intern
+// @route   POST /api/attendance/face/enroll/:internId
+// @body    { embedding?: number[], embeddings?: number[][], replace?: boolean, modelVersion?: string }
+const enrollInternFace = async (req, res) => {
+    try {
+        const { internId } = req.params;
+        const { embedding, embeddings, replace = false, modelVersion } = req.body;
+
+        const intern = await Intern.findById(internId).select('+faceEmbeddings');
+        if (!intern) {
+            return res.status(404).json({ message: 'Intern not found' });
+        }
+
+        let inputEmbeddings = [];
+        if (Array.isArray(embeddings) && embeddings.length > 0) {
+            inputEmbeddings = embeddings;
+        } else if (Array.isArray(embedding) && embedding.length > 0) {
+            inputEmbeddings = [embedding];
+        } else {
+            return res.status(400).json({ message: 'Provide embedding or embeddings array' });
+        }
+
+        const normalizedEmbeddings = inputEmbeddings.map(item => normalizeEmbedding(item));
+        const embeddingDimension = normalizedEmbeddings[0].length;
+
+        if (normalizedEmbeddings.some(item => item.length !== embeddingDimension)) {
+            return res.status(400).json({ message: 'All face embeddings must have the same dimension' });
+        }
+
+        const existingEmbeddings = Array.isArray(intern.faceEmbeddings) ? intern.faceEmbeddings : [];
+        const nextEmbeddings = replace
+            ? normalizedEmbeddings
+            : [...existingEmbeddings, ...normalizedEmbeddings];
+
+        if (nextEmbeddings.length > 10) {
+            return res.status(400).json({ message: 'Maximum 10 face embeddings are allowed per intern' });
+        }
+
+        intern.faceEmbeddings = nextEmbeddings;
+        intern.faceEmbeddingDimension = embeddingDimension;
+        intern.faceModelVersion = modelVersion || intern.faceModelVersion || null;
+        intern.faceEnrolledAt = new Date();
+        await intern.save();
+
+        res.json({
+            message: 'Face enrollment saved successfully',
+            internId: intern._id,
+            embeddingCount: intern.faceEmbeddings.length,
+            embeddingDimension: intern.faceEmbeddingDimension,
+            faceEnrolledAt: intern.faceEnrolledAt,
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// @desc    Face-based attendance punch-in (single punch-in/day)
+// @route   POST /api/attendance/face/punchin
+// @body    { embedding: number[] }
+const facePunchIn = async (req, res) => {
+    try {
+        const { embedding } = req.body;
+
+        if (!Array.isArray(embedding) || embedding.length === 0) {
+            return res.status(400).json({ message: 'Face embedding is required' });
+        }
+
+        const normalizedProbe = normalizeEmbedding(embedding);
+        const dateKey = getISTDateKey();
+        const attendanceDate = new Date(`${dateKey}T00:00:00.000Z`);
+        const now = new Date();
+        const nowMinutes = getISTMinutesOfDay(now);
+
+        const allInterns = await Intern.find(
+            { faceEmbeddingDimension: normalizedProbe.length },
+            '_id name email department joiningDate isDiscontinued discontinuedFrom faceEmbeddingDimension'
+        ).select('+faceEmbeddings');
+
+        const activeInterns = allInterns.filter(intern => {
+            if (!Array.isArray(intern.faceEmbeddings) || intern.faceEmbeddings.length === 0) return false;
+            return isInternActiveOnDate(intern, attendanceDate);
+        });
+
+        if (activeInterns.length === 0) {
+            return res.status(404).json({ message: 'No enrolled active interns found for face matching' });
+        }
+
+        let bestMatch = null;
+        let bestScore = -1;
+
+        for (const intern of activeInterns) {
+            for (const template of intern.faceEmbeddings) {
+                const score = cosineSimilarity(normalizedProbe, template);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMatch = intern;
+                }
+            }
+        }
+
+        if (!bestMatch || bestScore < DEFAULT_FACE_MATCH_THRESHOLD) {
+            return res.status(401).json({
+                message: 'Face not recognized. Please retry with clear framing.',
+                threshold: DEFAULT_FACE_MATCH_THRESHOLD,
+                confidence: bestScore > 0 ? Number(bestScore.toFixed(4)) : 0,
+            });
+        }
+
+        const existingAttendance = await Attendance.findOne({ internId: bestMatch._id, date: attendanceDate });
+        if (existingAttendance?.punchInAt) {
+            return res.status(409).json({
+                message: 'Attendance already punched in for today',
+                internId: bestMatch._id,
+                internName: bestMatch.name,
+            });
+        }
+
+        if (existingAttendance && existingAttendance.status && existingAttendance.status !== 'Present' && existingAttendance.status !== 'Late') {
+            return res.status(409).json({
+                message: `Attendance already marked as ${existingAttendance.status} for today`,
+                internId: bestMatch._id,
+                internName: bestMatch.name,
+            });
+        }
+
+        const lateMinutes = Math.max(0, nowMinutes - LATE_CUTOFF_MINUTES);
+        const effectiveStart = Math.max(nowMinutes, SHIFT_START_MINUTES);
+        const workedMinutes = Math.max(0, Math.min(DAILY_REQUIRED_MINUTES, SHIFT_END_MINUTES - effectiveStart));
+        const shortfallMinutes = Math.max(0, DAILY_REQUIRED_MINUTES - workedMinutes);
+        const isLate = lateMinutes > 0;
+
+        const savedAttendance = await Attendance.findOneAndUpdate(
+            { internId: bestMatch._id, date: attendanceDate },
+            {
+                internId: bestMatch._id,
+                date: attendanceDate,
+                status: isLate ? 'Late' : 'Present',
+                punchInAt: now,
+                punctualityStatus: isLate ? 'Late' : 'OnTime',
+                lateMinutes,
+                workedMinutes,
+                shortfallMinutes,
+                faceVerified: true,
+                faceConfidence: Number(bestScore.toFixed(4)),
+            },
+            { upsert: true, new: true, runValidators: true }
+        );
+
+        emitDataRefresh({ source: 'attendance', action: 'face-punched-in', date: dateKey });
+
+        res.json({
+            message: isLate ? 'Attendance marked as Late' : 'Attendance marked as Present',
+            intern: {
+                _id: bestMatch._id,
+                name: bestMatch.name,
+                email: bestMatch.email,
+                department: bestMatch.department,
+            },
+            attendance: {
+                _id: savedAttendance._id,
+                date: dateKey,
+                status: savedAttendance.status,
+                punchInAt: savedAttendance.punchInAt,
+                punctualityStatus: savedAttendance.punctualityStatus,
+                lateMinutes: savedAttendance.lateMinutes,
+                workedMinutes: savedAttendance.workedMinutes,
+                shortfallMinutes: savedAttendance.shortfallMinutes,
+                faceConfidence: savedAttendance.faceConfidence,
+            },
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
@@ -137,6 +377,11 @@ const getAttendanceByDate = async (req, res) => {
                 internDepartment: a.internId.department,
                 date: a.date,
                 status: a.status,
+                punchInAt: a.punchInAt || null,
+                punctualityStatus: a.punctualityStatus || null,
+                lateMinutes: a.lateMinutes || 0,
+                workedMinutes: a.workedMinutes || 0,
+                shortfallMinutes: a.shortfallMinutes || 0,
             };
         });
 
@@ -151,6 +396,11 @@ const getAttendanceByDate = async (req, res) => {
                 internDepartment: intern.department,
                 date: targetDate,
                 status: null, // Not marked yet
+                punchInAt: null,
+                punctualityStatus: null,
+                lateMinutes: 0,
+                workedMinutes: 0,
+                shortfallMinutes: 0,
             };
         });
 
@@ -241,6 +491,7 @@ const getAttendanceHistory = async (req, res) => {
         let absent = 0;
         let halfDay = 0;
         let leave = 0;
+        let late = 0;
         let unmarked = 0;
 
         const unmarkedDates = [];
@@ -264,6 +515,10 @@ const getAttendanceHistory = async (req, res) => {
                     status = recordedStatus;
                     source = 'marked';
                     if (recordedStatus === 'Present') present++;
+                    if (recordedStatus === 'Late') {
+                        late++;
+                        present++;
+                    }
                     if (recordedStatus === 'Absent') absent++;
                     if (recordedStatus === 'HalfDay') halfDay++;
                     if (recordedStatus === 'Leave') leave++;
@@ -310,6 +565,7 @@ const getAttendanceHistory = async (req, res) => {
             },
             summary: {
                 present,
+                late,
                 absent,
                 halfDay,
                 leave,
@@ -324,4 +580,11 @@ const getAttendanceHistory = async (req, res) => {
     }
 };
 
-module.exports = { markAttendance, getAttendanceByDate, getAttendanceByIntern, getAttendanceHistory };
+module.exports = {
+    markAttendance,
+    enrollInternFace,
+    facePunchIn,
+    getAttendanceByDate,
+    getAttendanceByIntern,
+    getAttendanceHistory,
+};

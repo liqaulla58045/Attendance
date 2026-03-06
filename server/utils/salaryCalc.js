@@ -83,7 +83,7 @@ function getWorkingDays(startDate, endDate, holidays = []) {
 
 /**
  * Calculate effective present days from attendance records.
- * Present = 1, HalfDay = 0.5, Leave = 0, Absent = 0
+ * Present/Late = 1, HalfDay = 0.5, Leave = 0, Absent = 0
  * @param {Array} records - array of { status: string }
  * @returns {{ present: number, halfDay: number, leave: number, absent: number, effectiveDays: number }}
  */
@@ -96,6 +96,7 @@ function calculateAttendanceSummary(records) {
     records.forEach(record => {
         switch (record.status) {
             case 'Present':
+            case 'Late':
                 present++;
                 break;
             case 'HalfDay':

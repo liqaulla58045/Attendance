@@ -12,8 +12,42 @@ const attendanceSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['Present', 'Absent', 'Leave', 'HalfDay'],
+        enum: ['Present', 'Late', 'Absent', 'Leave', 'HalfDay'],
         required: [true, 'Status is required'],
+    },
+    punchInAt: {
+        type: Date,
+        default: null,
+    },
+    punctualityStatus: {
+        type: String,
+        enum: ['OnTime', 'Late'],
+        default: null,
+    },
+    lateMinutes: {
+        type: Number,
+        min: 0,
+        default: 0,
+    },
+    workedMinutes: {
+        type: Number,
+        min: 0,
+        default: 0,
+    },
+    shortfallMinutes: {
+        type: Number,
+        min: 0,
+        default: 0,
+    },
+    faceVerified: {
+        type: Boolean,
+        default: false,
+    },
+    faceConfidence: {
+        type: Number,
+        min: 0,
+        max: 1,
+        default: null,
     },
 }, { timestamps: true });
 

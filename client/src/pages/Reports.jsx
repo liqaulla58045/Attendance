@@ -180,6 +180,7 @@ export default function Reports() {
                                             <th>Marked</th>
                                             <th>Unmarked</th>
                                             <th>Present</th>
+                                            <th>Late</th>
                                             <th>Half Day</th>
                                             <th>Leave</th>
                                             <th>Absent</th>
@@ -199,9 +200,10 @@ export default function Reports() {
                                                 <td>{intern.department}</td>
                                                 <td>₹{intern.monthlyStipend?.toLocaleString()}</td>
                                                 <td style={{ textAlign: 'center' }}>{intern.totalDays ?? intern.totalWorkingDays}</td>
-                                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{intern.markedDays ?? (intern.present + intern.halfDay + intern.leave + intern.absent)}</td>
+                                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{intern.markedDays ?? (intern.present + (intern.late || 0) + intern.halfDay + intern.leave + intern.absent)}</td>
                                                 <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{intern.unmarkedDays ?? 0}</td>
                                                 <td style={{ textAlign: 'center', color: 'var(--success-light)', fontWeight: 600 }}>{intern.present}</td>
+                                                <td style={{ textAlign: 'center', color: 'var(--warning-light)', fontWeight: 600 }}>{intern.late || 0}</td>
                                                 <td style={{ textAlign: 'center', color: 'var(--accent-light)' }}>{intern.halfDay}</td>
                                                 <td style={{ textAlign: 'center', color: 'var(--warning-light)' }}>{intern.leave}</td>
                                                 <td style={{ textAlign: 'center', color: 'var(--danger-light)' }}>{intern.absent}</td>
