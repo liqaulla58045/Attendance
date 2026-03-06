@@ -73,14 +73,24 @@ export default function FaceAttendance() {
     const [captureBusy, setCaptureBusy] = useState(false);
     const [enrollBusy, setEnrollBusy] = useState(false);
     const [punchBusy, setPunchBusy] = useState(false);
+    const [punchOutBusy, setPunchOutBusy] = useState(false);
+    const [manualSaveBusy, setManualSaveBusy] = useState(false);
+    const [isEditingFace, setIsEditingFace] = useState(false);
 
     const [samples, setSamples] = useState([]);
     const [toast, setToast] = useState(null);
     const [lastPunchResult, setLastPunchResult] = useState(null);
+    const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
+    const [manualStatus, setManualStatus] = useState('Present');
 
     const selectedIntern = useMemo(
         () => interns.find((intern) => intern._id === selectedInternId) || null,
         [interns, selectedInternId]
+    );
+
+    const hasFaceEnrollment = useMemo(
+        () => Boolean(selectedIntern?.faceEnrolledAt),
+        [selectedIntern]
     );
 
     const showToast = (message, type = 'success') => {
@@ -103,6 +113,11 @@ export default function FaceAttendance() {
 
         fetchInterns();
     }, []);
+
+    useEffect(() => {
+        setSamples([]);
+        setIsEditingFace(false);
+    }, [selectedInternId]);
 
     useEffect(() => {
         let isMounted = true;
@@ -222,7 +237,16 @@ export default function FaceAttendance() {
                 modelVersion: 'mediapipe-facemesh-v1',
             });
             showToast(data.message || 'Face enrolled successfully');
+            setInterns((prev) => prev.map((intern) => {
+                if (intern._id !== selectedInternId) return intern;
+                return {
+                    ...intern,
+                    faceEmbeddingDimension: data.embeddingDimension,
+                    faceEnrolledAt: data.faceEnrolledAt,
+                };
+            }));
             setSamples([]);
+            setIsEditingFace(false);
         } catch (error) {
             showToast(error.response?.data?.message || 'Face enrollment failed', 'error');
         } finally {
@@ -241,6 +265,45 @@ export default function FaceAttendance() {
             showToast(error.response?.data?.message || error.message || 'Face punch-in failed', 'error');
         } finally {
             setPunchBusy(false);
+        }
+    };
+
+    const handleFacePunchOut = async () => {
+        setPunchOutBusy(true);
+        try {
+            const embedding = await captureEmbedding();
+            const { data } = await API.post('/attendance/face/punchout', { embedding });
+            setLastPunchResult(data);
+            showToast(data.message || 'Punch-out marked successfully');
+        } catch (error) {
+            showToast(error.response?.data?.message || error.message || 'Face punch-out failed', 'error');
+        } finally {
+            setPunchOutBusy(false);
+        }
+    };
+
+    const handleManualOverride = async () => {
+        if (!selectedInternId) {
+            showToast('Select an intern first', 'error');
+            return;
+        }
+
+        if (!manualDate || !manualStatus) {
+            showToast('Date and status are required', 'error');
+            return;
+        }
+
+        setManualSaveBusy(true);
+        try {
+            const { data } = await API.post('/attendance', {
+                date: manualDate,
+                records: [{ internId: selectedInternId, status: manualStatus }],
+            });
+            showToast(data.message || `Manually marked as ${manualStatus}`);
+        } catch (error) {
+            showToast(error.response?.data?.message || 'Manual override failed', 'error');
+        } finally {
+            setManualSaveBusy(false);
         }
     };
 
@@ -273,7 +336,7 @@ export default function FaceAttendance() {
             <div className="card" style={{ marginBottom: '24px' }}>
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                     <div className="form-group" style={{ marginBottom: 0, minWidth: '280px' }}>
-                        <label>Intern (for enrollment)</label>
+                        <label>Intern (for enrollment/edit)</label>
                         <select
                             className="form-control"
                             value={selectedInternId}
@@ -290,20 +353,41 @@ export default function FaceAttendance() {
                         </select>
                     </div>
 
-                    <button className="btn btn-outline" onClick={handleCaptureSample} disabled={captureBusy || !modelReady || !cameraReady}>
-                        <Camera size={16} /> {captureBusy ? 'Capturing...' : 'Capture Sample'}
-                    </button>
+                    {hasFaceEnrollment && !isEditingFace ? (
+                        <>
+                            <span className="badge badge-present" style={{ marginBottom: '8px' }}>Face Already Enrolled</span>
+                            <button className="btn btn-primary" onClick={() => setIsEditingFace(true)}>
+                                <ShieldCheck size={16} /> Edit Face
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <button className="btn btn-outline" onClick={handleCaptureSample} disabled={captureBusy || !modelReady || !cameraReady}>
+                                <Camera size={16} /> {captureBusy ? 'Capturing...' : 'Capture Sample'}
+                            </button>
 
-                    <button className="btn btn-outline" onClick={() => setSamples([])} disabled={samples.length === 0 || enrollBusy || captureBusy}>
-                        Clear Samples
-                    </button>
+                            <button className="btn btn-outline" onClick={() => setSamples([])} disabled={samples.length === 0 || enrollBusy || captureBusy}>
+                                Clear Samples
+                            </button>
 
-                    <button className="btn btn-primary" onClick={handleEnrollFace} disabled={enrollBusy || samples.length < MIN_ENROLL_SAMPLES}>
-                        <ShieldCheck size={16} /> {enrollBusy ? 'Enrolling...' : `Enroll Face (${samples.length}/${MIN_ENROLL_SAMPLES}+)`}
-                    </button>
+                            <button className="btn btn-primary" onClick={handleEnrollFace} disabled={enrollBusy || samples.length < MIN_ENROLL_SAMPLES}>
+                                <ShieldCheck size={16} /> {enrollBusy ? 'Saving...' : `${hasFaceEnrollment ? 'Save Face Update' : 'Enroll Face'} (${samples.length}/${MIN_ENROLL_SAMPLES}+)`}
+                            </button>
+
+                            {hasFaceEnrollment && isEditingFace && (
+                                <button className="btn btn-outline" onClick={() => { setIsEditingFace(false); setSamples([]); }} disabled={enrollBusy || captureBusy}>
+                                    Cancel Edit
+                                </button>
+                            )}
+                        </>
+                    )}
 
                     <button className="btn btn-success" onClick={handleFacePunchIn} disabled={punchBusy || !modelReady || !cameraReady}>
                         <ScanFace size={16} /> {punchBusy ? 'Verifying...' : 'Face Punch-In'}
+                    </button>
+
+                    <button className="btn btn-warning" onClick={handleFacePunchOut} disabled={punchOutBusy || !modelReady || !cameraReady}>
+                        <ScanFace size={16} /> {punchOutBusy ? 'Verifying...' : 'Face Punch-Out'}
                     </button>
                 </div>
             </div>
@@ -326,7 +410,7 @@ export default function FaceAttendance() {
                     />
                 </div>
                 <p style={{ color: 'var(--text-muted)', marginTop: '10px', fontSize: '0.85rem' }}>
-                    Keep only one face in frame. For enrollment, capture 3-5 samples with slight head angle changes.
+                    Keep only one face in frame. For enrollment/edit, capture 3-5 samples with slight head angle changes.
                 </p>
             </div>
 
@@ -341,12 +425,55 @@ export default function FaceAttendance() {
                 </div>
             )}
 
+            <div className="card" style={{ marginBottom: '24px' }}>
+                <h3 className="card-heading"><ShieldCheck size={16} /> Admin Manual Override</h3>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '12px', fontSize: '0.85rem' }}>
+                    Use this when admin needs to manually correct status: Present, Late, Absent, Leave, or HalfDay.
+                </p>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label>Date</label>
+                        <input
+                            type="date"
+                            className="form-control"
+                            value={manualDate}
+                            onChange={(e) => setManualDate(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 0, minWidth: '170px' }}>
+                        <label>Status</label>
+                        <select
+                            className="form-control"
+                            value={manualStatus}
+                            onChange={(e) => setManualStatus(e.target.value)}
+                        >
+                            <option value="Present">Present</option>
+                            <option value="Late">Late</option>
+                            <option value="Absent">Absent</option>
+                            <option value="Leave">Leave</option>
+                            <option value="HalfDay">HalfDay</option>
+                        </select>
+                    </div>
+
+                    <button
+                        className="btn btn-warning"
+                        onClick={handleManualOverride}
+                        disabled={manualSaveBusy || !selectedInternId}
+                    >
+                        {manualSaveBusy ? 'Saving...' : 'Save Manual Status'}
+                    </button>
+                </div>
+            </div>
+
             {lastPunchResult && (
                 <div className="card">
-                    <h3 className="card-heading"><ScanFace size={16} /> Last Punch-In Result</h3>
+                    <h3 className="card-heading"><ScanFace size={16} /> Last Face Attendance Result</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
                         <div><strong>Intern:</strong> {lastPunchResult.intern?.name}</div>
                         <div><strong>Status:</strong> {lastPunchResult.attendance?.status}</div>
+                        <div><strong>Punch-In:</strong> {lastPunchResult.attendance?.punchInAt ? new Date(lastPunchResult.attendance.punchInAt).toLocaleString('en-IN') : '-'}</div>
+                        <div><strong>Punch-Out:</strong> {lastPunchResult.attendance?.punchOutAt ? new Date(lastPunchResult.attendance.punchOutAt).toLocaleString('en-IN') : '-'}</div>
                         <div><strong>Punctuality:</strong> {lastPunchResult.attendance?.punctualityStatus}</div>
                         <div><strong>Late Minutes:</strong> {lastPunchResult.attendance?.lateMinutes}</div>
                         <div><strong>Worked Minutes:</strong> {lastPunchResult.attendance?.workedMinutes}</div>

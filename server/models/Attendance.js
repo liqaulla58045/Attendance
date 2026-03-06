@@ -19,6 +19,10 @@ const attendanceSchema = new mongoose.Schema({
         type: Date,
         default: null,
     },
+    punchOutAt: {
+        type: Date,
+        default: null,
+    },
     punctualityStatus: {
         type: String,
         enum: ['OnTime', 'Late'],

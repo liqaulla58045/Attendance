@@ -64,6 +64,16 @@ function cosineSimilarity(vecA, vecB) {
     return dot;
 }
 
+function calculateWorkedAndShortfallFromPunches(punchInAt, punchOutAt) {
+    const inMinutes = getISTMinutesOfDay(punchInAt);
+    const outMinutes = getISTMinutesOfDay(punchOutAt);
+    const effectiveStart = Math.max(inMinutes, SHIFT_START_MINUTES);
+    const effectiveEnd = Math.min(outMinutes, SHIFT_END_MINUTES);
+    const workedMinutes = Math.max(0, Math.min(DAILY_REQUIRED_MINUTES, effectiveEnd - effectiveStart));
+    const shortfallMinutes = Math.max(0, DAILY_REQUIRED_MINUTES - workedMinutes);
+    return { workedMinutes, shortfallMinutes };
+}
+
 function isInternActiveOnDate(intern, targetDate) {
     const dateOnly = new Date(Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate()));
     const joiningDate = new Date(intern.joiningDate);
@@ -144,6 +154,7 @@ const markAttendance = async (req, res) => {
                         date: attendanceDate,
                         status: record.status,
                         punchInAt: null,
+                        punchOutAt: null,
                         punctualityStatus: null,
                         lateMinutes: 0,
                         workedMinutes: 0,
@@ -321,6 +332,7 @@ const facePunchIn = async (req, res) => {
                 date: attendanceDate,
                 status: isLate ? 'Late' : 'Present',
                 punchInAt: now,
+                punchOutAt: null,
                 punctualityStatus: isLate ? 'Late' : 'OnTime',
                 lateMinutes,
                 workedMinutes,
@@ -354,6 +366,123 @@ const facePunchIn = async (req, res) => {
             },
         });
     } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// @desc    Face-based attendance punch-out
+// @route   POST /api/attendance/face/punchout
+// @body    { embedding: number[] }
+const facePunchOut = async (req, res) => {
+    try {
+        const { embedding } = req.body;
+
+        if (!Array.isArray(embedding) || embedding.length === 0) {
+            return res.status(400).json({ message: 'Face embedding is required' });
+        }
+
+        const normalizedProbe = normalizeEmbedding(embedding);
+        const dateKey = getISTDateKey();
+        const attendanceDate = new Date(`${dateKey}T00:00:00.000Z`);
+        const now = new Date();
+
+        const allInterns = await Intern.find(
+            { faceEmbeddingDimension: normalizedProbe.length },
+            '_id name email department joiningDate isDiscontinued discontinuedFrom faceEmbeddingDimension'
+        ).select('+faceEmbeddings');
+
+        const activeInterns = allInterns.filter(intern => {
+            if (!Array.isArray(intern.faceEmbeddings) || intern.faceEmbeddings.length === 0) return false;
+            return isInternActiveOnDate(intern, attendanceDate);
+        });
+
+        if (activeInterns.length === 0) {
+            return res.status(404).json({ message: 'No enrolled active interns found for face matching' });
+        }
+
+        let bestMatch = null;
+        let bestScore = -1;
+
+        for (const intern of activeInterns) {
+            for (const template of intern.faceEmbeddings) {
+                const score = cosineSimilarity(normalizedProbe, template);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMatch = intern;
+                }
+            }
+        }
+
+        if (!bestMatch || bestScore < DEFAULT_FACE_MATCH_THRESHOLD) {
+            return res.status(401).json({
+                message: 'Face not recognized. Please retry with clear framing.',
+                threshold: DEFAULT_FACE_MATCH_THRESHOLD,
+                confidence: bestScore > 0 ? Number(bestScore.toFixed(4)) : 0,
+            });
+        }
+
+        const attendance = await Attendance.findOne({ internId: bestMatch._id, date: attendanceDate });
+
+        if (!attendance || !attendance.punchInAt) {
+            return res.status(409).json({
+                message: 'No punch-in found for today. Please punch in first.',
+                internId: bestMatch._id,
+                internName: bestMatch.name,
+            });
+        }
+
+        if (attendance.punchOutAt) {
+            return res.status(409).json({
+                message: 'Punch-out already recorded for today',
+                internId: bestMatch._id,
+                internName: bestMatch.name,
+            });
+        }
+
+        if (!['Present', 'Late'].includes(attendance.status)) {
+            return res.status(409).json({
+                message: `Attendance status is ${attendance.status}; punch-out is not allowed`,
+                internId: bestMatch._id,
+                internName: bestMatch.name,
+            });
+        }
+
+        const { workedMinutes, shortfallMinutes } = calculateWorkedAndShortfallFromPunches(attendance.punchInAt, now);
+
+        attendance.punchOutAt = now;
+        attendance.workedMinutes = workedMinutes;
+        attendance.shortfallMinutes = shortfallMinutes;
+        attendance.faceConfidence = Number(bestScore.toFixed(4));
+        await attendance.save();
+
+        emitDataRefresh({ source: 'attendance', action: 'face-punched-out', date: dateKey });
+
+        res.json({
+            message: 'Punch-out recorded successfully',
+            intern: {
+                _id: bestMatch._id,
+                name: bestMatch.name,
+                email: bestMatch.email,
+                department: bestMatch.department,
+            },
+            attendance: {
+                _id: attendance._id,
+                date: dateKey,
+                status: attendance.status,
+                punchInAt: attendance.punchInAt,
+                punchOutAt: attendance.punchOutAt,
+                punctualityStatus: attendance.punctualityStatus,
+                lateMinutes: attendance.lateMinutes,
+                workedMinutes: attendance.workedMinutes,
+                shortfallMinutes: attendance.shortfallMinutes,
+                faceConfidence: attendance.faceConfidence,
+            },
+        });
+    } catch (error) {
+        if (error instanceof BadRequestError) {
+            return res.status(400).json({ message: error.message });
+        }
+        console.error('Face punch-out error:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
@@ -393,6 +522,7 @@ const getAttendanceByDate = async (req, res) => {
                 date: a.date,
                 status: a.status,
                 punchInAt: a.punchInAt || null,
+                punchOutAt: a.punchOutAt || null,
                 punctualityStatus: a.punctualityStatus || null,
                 lateMinutes: a.lateMinutes || 0,
                 workedMinutes: a.workedMinutes || 0,
@@ -412,6 +542,7 @@ const getAttendanceByDate = async (req, res) => {
                 date: targetDate,
                 status: null, // Not marked yet
                 punchInAt: null,
+                punchOutAt: null,
                 punctualityStatus: null,
                 lateMinutes: 0,
                 workedMinutes: 0,
@@ -599,6 +730,7 @@ module.exports = {
     markAttendance,
     enrollInternFace,
     facePunchIn,
+    facePunchOut,
     getAttendanceByDate,
     getAttendanceByIntern,
     getAttendanceHistory,

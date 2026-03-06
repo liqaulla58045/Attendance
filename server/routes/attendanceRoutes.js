@@ -5,6 +5,7 @@ const {
     markAttendance,
     enrollInternFace,
     facePunchIn,
+    facePunchOut,
     getAttendanceByDate,
     getAttendanceByIntern,
     getAttendanceHistory,
@@ -13,6 +14,7 @@ const {
 router.post('/', protect, markAttendance);
 router.post('/face/enroll/:internId', protect, enrollInternFace);
 router.post('/face/punchin', protect, facePunchIn);
+router.post('/face/punchout', protect, facePunchOut);
 router.get('/date/:date', protect, getAttendanceByDate);
 router.get('/intern/:internId', protect, getAttendanceByIntern);
 router.get('/history/:internId', protect, getAttendanceHistory);
